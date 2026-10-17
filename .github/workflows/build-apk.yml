@@ -1,0 +1,46 @@
+name: Build Smart Alarm APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create Android project
+        run: flutter create --platforms=android --project-name smart_alarm build_app
+      - name: Copy app source and configure permissions
+        run: |
+          cp app_src/pubspec.yaml build_app/pubspec.yaml
+          cp app_src/lib/main.dart build_app/lib/main.dart
+          sed -i 's/<application/<uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"\/>\n    <application/' build_app/android/app/src/main/AndroidManifest.xml
+      - name: Install dependencies
+        working-directory: build_app
+        run: flutter pub get
+      - name: Build release APK
+        working-directory: build_app
+        run: flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-alarm-apk
+          path: build_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
