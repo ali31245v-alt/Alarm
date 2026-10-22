@@ -51,23 +51,25 @@ Future<void> main() async {
 }
 
 class AlarmItem {
-  AlarmItem(this.id, this.hour, this.minute, this.label, this.enabled, this.days);
+  AlarmItem(this.id, this.hour, this.minute, this.label, this.enabled, this.days, this.target);
   final int id;
   int hour;
   int minute;
   String label;
   bool enabled;
   List<int> days;
+  String target;
 
   Map<String, dynamic> toJson() => {
     'id': id, 'hour': hour, 'minute': minute, 'label': label,
-    'enabled': enabled, 'days': days,
+    'enabled': enabled, 'days': days, 'target': target,
   };
 
   factory AlarmItem.fromJson(Map<String, dynamic> j) => AlarmItem(
     j['id'] as int, j['hour'] as int, j['minute'] as int,
     j['label'] as String? ?? 'منبّه', j['enabled'] as bool? ?? true,
     (j['days'] as List<dynamic>? ?? []).cast<int>(),
+    j['target'] as String? ?? 'فرشاة الأسنان',
   );
 }
 
@@ -82,6 +84,7 @@ class AlarmStore extends ChangeNotifier {
       try {
         alarms.addAll((jsonDecode(raw) as List<dynamic>).map(
           (e) => AlarmItem.fromJson(e as Map<String, dynamic>)));
+        for (final alarm in alarms) { targetByAlarmId[alarm.id] = alarm.target; }
         if (alarms.isNotEmpty) {
           nextId = alarms.map((a) => a.id).reduce((a, b) => a > b ? a : b) + 1;
         }
@@ -95,8 +98,9 @@ class AlarmStore extends ChangeNotifier {
     await p.setString('alarms_v1', jsonEncode(alarms.map((a) => a.toJson()).toList()));
   }
 
-  Future<void> add(int h, int m, String label, List<int> days) async {
-    final a = AlarmItem(nextId++, h, m, label.trim().isEmpty ? 'منبّه' : label.trim(), true, days);
+  Future<void> add(int h, int m, String label, List<int> days, String target) async {
+    final a = AlarmItem(nextId++, h, m, label.trim().isEmpty ? 'منبّه' : label.trim(), true, days, target);
+    targetByAlarmId[a.id] = target;
     alarms.add(a);
     await schedule(a);
     await save();
@@ -117,6 +121,7 @@ class AlarmStore extends ChangeNotifier {
 
   Future<void> remove(AlarmItem a) async {
     alarms.remove(a);
+    targetByAlarmId.remove(a.id);
     await notifications.cancel(a.id);
     for (final d in a.days) { await notifications.cancel(a.id * 10 + d); }
     await save();
@@ -324,7 +329,7 @@ class HomeScreen extends StatelessWidget {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
           onPressed: () async {
             final draft = await Navigator.push<AlarmDraft>(context, MaterialPageRoute(builder: (_) => const SetAlarmScreen()));
-            if (draft != null) await store.add(draft.hour, draft.minute, draft.label, draft.days);
+            if (draft != null) await store.add(draft.hour, draft.minute, draft.label, draft.days, draft.target);
           },
           icon: const Icon(Icons.add_alarm_rounded),
           label: const Text('إضافة منبّه جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -368,10 +373,11 @@ class AlarmCard extends StatelessWidget {
 }
 
 class AlarmDraft {
-  const AlarmDraft(this.hour, this.minute, this.label, this.days);
+  const AlarmDraft(this.hour, this.minute, this.label, this.days, this.target);
   final int hour, minute;
   final String label;
   final List<int> days;
+  final String target;
 }
 
 class SetAlarmScreen extends StatefulWidget {
@@ -382,6 +388,7 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
   TimeOfDay selectedTime = TimeOfDay.now();
   final labelController = TextEditingController(text: 'منبّه جديد');
   final selectedDays = <int>{};
+  String selectedTarget = 'فرشاة الأسنان';
   @override void dispose() { labelController.dispose(); super.dispose(); }
 
   @override Widget build(BuildContext context) {
@@ -410,7 +417,16 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
           hintText: 'مثلاً: وقت الاستيقاظ', filled: true, fillColor: panel,
           prefixIcon: const Icon(Icons.edit_outlined, color: purple),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none))),
-        const SizedBox(height: 14), const Text('التكرار', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 14),
+        const Text('تحدّي التصوير', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 14), decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(16)),
+          child: DropdownButtonHideUnderline(child: DropdownButton<String>(isExpanded: true, value: selectedTarget,
+            items: challengeTargets.keys.map((name) => DropdownMenuItem(value: name, child: Text('صوّر: $name'))).toList(),
+            onChanged: (value) { if (value != null) setState(() => selectedTarget = value); }))),
+        const SizedBox(height: 8),
+        const Text('سيُطلب منك تصوير الهدف عند فتح تحدّي المنبّه، مع التحقق من الصورة على الجهاز.', style: TextStyle(color: Colors.white54, fontSize: 12)),
+        const SizedBox(height: 18), const Text('التكرار', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6), const Text('اترك الأيام بدون تحديد لمنبّه لمرة واحدة', style: TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 12),
         ...List.generate(7, (i) => CheckboxListTile(
@@ -422,7 +438,7 @@ class _SetAlarmScreenState extends State<SetAlarmScreen> {
         const SizedBox(height: 20),
         SizedBox(height: 56, child: FilledButton.icon(
           onPressed: () => Navigator.pop(context, AlarmDraft(selectedTime.hour, selectedTime.minute,
-            labelController.text, selectedDays.toList()..sort())),
+            labelController.text, selectedDays.toList()..sort(), selectedTarget)),
           style: FilledButton.styleFrom(backgroundColor: purple, foregroundColor: const Color(0xFF160E2C),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17))),
           icon: const Icon(Icons.check_rounded),
