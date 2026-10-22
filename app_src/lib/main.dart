@@ -23,11 +23,10 @@ const challengeTargets = <String, List<String>>{
   'المكتب': ['desk', 'table', 'computer desk'],
   'المرحاض': ['toilet', 'bathroom'],
 };
-final Map<int, String> targetByAlarmId = {};
 void openChallengeFromPayload(String? payload) {
   if (payload == null || payload.isEmpty) return;
   navigatorKey.currentState?.push(MaterialPageRoute(
-    builder: (_) => AlarmChallengeScreen(target: targetByAlarmId[int.tryParse(payload) ?? -1] ?? 'فرشاة الأسنان'),
+    builder: (_) => AlarmChallengeScreen(target: challengeTargets.containsKey(payload) ? payload : 'فرشاة الأسنان'),
   ));
 }
 
@@ -84,7 +83,7 @@ class AlarmStore extends ChangeNotifier {
       try {
         alarms.addAll((jsonDecode(raw) as List<dynamic>).map(
           (e) => AlarmItem.fromJson(e as Map<String, dynamic>)));
-        for (final alarm in alarms) { targetByAlarmId[alarm.id] = alarm.target; }
+
         if (alarms.isNotEmpty) {
           nextId = alarms.map((a) => a.id).reduce((a, b) => a > b ? a : b) + 1;
         }
@@ -100,7 +99,6 @@ class AlarmStore extends ChangeNotifier {
 
   Future<void> add(int h, int m, String label, List<int> days, String target) async {
     final a = AlarmItem(nextId++, h, m, label.trim().isEmpty ? 'منبّه' : label.trim(), true, days, target);
-    targetByAlarmId[a.id] = target;
     alarms.add(a);
     await schedule(a);
     await save();
@@ -121,7 +119,6 @@ class AlarmStore extends ChangeNotifier {
 
   Future<void> remove(AlarmItem a) async {
     alarms.remove(a);
-    targetByAlarmId.remove(a.id);
     await notifications.cancel(a.id);
     for (final d in a.days) { await notifications.cancel(a.id * 10 + d); }
     await save();
@@ -144,7 +141,7 @@ class AlarmStore extends ChangeNotifier {
     if (a.days.isEmpty) {
       await notifications.zonedSchedule(
         a.id, a.label, 'حان وقت المنبّه ⏰', tz.TZDateTime.from(next, tz.local),
-        details, payload: a.id.toString(), androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        details, payload: a.target, androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       );
     } else {
