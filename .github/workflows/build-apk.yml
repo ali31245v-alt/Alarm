@@ -49,6 +49,67 @@ jobs:
           p.write_text(s)
           print("Configured Android core library desugaring.")
           PY
+      - name: Add native looping alarm ringtone
+        run: |
+          cat > build_app/android/app/src/main/kotlin/com/example/smart_alarm/MainActivity.kt <<'KOTLIN'
+          package com.example.smart_alarm
+
+          import android.media.AudioAttributes
+          import android.media.Ringtone
+          import android.media.RingtoneManager
+          import android.net.Uri
+          import android.os.Build
+          import android.provider.Settings
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {
+              private var alarmRingtone: Ringtone? = null
+
+              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+                  super.configureFlutterEngine(flutterEngine)
+                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "smart_alarm/ringtone")
+                      .setMethodCallHandler { call, result ->
+                          when (call.method) {
+                              "start" -> {
+                                  try {
+                                      if (alarmRingtone?.isPlaying != true) {
+                                          val uri: Uri = Settings.System.DEFAULT_ALARM_ALERT_URI
+                                              ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                                              ?: Settings.System.DEFAULT_NOTIFICATION_URI
+                                          alarmRingtone = RingtoneManager.getRingtone(applicationContext, uri)
+                                          alarmRingtone?.audioAttributes = AudioAttributes.Builder()
+                                              .setUsage(AudioAttributes.USAGE_ALARM)
+                                              .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                              .build()
+                                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                              alarmRingtone?.isLooping = true
+                                          }
+                                          alarmRingtone?.play()
+                                      }
+                                      result.success(true)
+                                  } catch (e: Exception) {
+                                      result.error("RINGTONE_ERROR", e.message, null)
+                                  }
+                              }
+                              "stop" -> {
+                                  alarmRingtone?.stop()
+                                  alarmRingtone = null
+                                  result.success(true)
+                              }
+                              else -> result.notImplemented()
+                          }
+                      }
+              }
+
+              override fun onDestroy() {
+                  alarmRingtone?.stop()
+                  alarmRingtone = null
+                  super.onDestroy()
+              }
+          }
+          KOTLIN
       - name: Install dependencies
         working-directory: build_app
         run: flutter pub get
