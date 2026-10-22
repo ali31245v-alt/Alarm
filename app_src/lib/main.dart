@@ -35,21 +35,29 @@ void openChallengeFromPayload(String? payload) {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tzdata.initializeTimeZones();
-  const settings = InitializationSettings(
-    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    iOS: DarwinInitializationSettings(),
-  );
-  await notifications.initialize(settings,
-    onDidReceiveNotificationResponse: (response) => openChallengeFromPayload(response.payload));
-  final launchDetails = await notifications.getNotificationAppLaunchDetails();
-  final androidNotifications = notifications.resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>();
-  await androidNotifications?.requestNotificationsPermission();
-  await androidNotifications?.requestExactAlarmsPermission();
+
+  // Show the actual app immediately. Notification/plugin failures must never
+  // leave the user staring at a blank launch screen.
   runApp(const SmartAlarmApp());
-  if (launchDetails?.didNotificationLaunchApp == true) {
-    WidgetsBinding.instance.addPostFrameCallback((_) =>
-      openChallengeFromPayload(launchDetails?.notificationResponse?.payload));
+
+  try {
+    const settings = InitializationSettings(
+      android: AndroidInitializationSettings('@drawable/ic_smart_alarm'),
+      iOS: DarwinInitializationSettings(),
+    );
+    await notifications.initialize(settings,
+      onDidReceiveNotificationResponse: (response) => openChallengeFromPayload(response.payload));
+    final launchDetails = await notifications.getNotificationAppLaunchDetails();
+    final androidNotifications = notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidNotifications?.requestNotificationsPermission();
+    await androidNotifications?.requestExactAlarmsPermission();
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) =>
+        openChallengeFromPayload(launchDetails?.notificationResponse?.payload));
+    }
+  } catch (error, stack) {
+    debugPrint('Notification initialization failed: $error\\n$stack');
   }
 }
 
