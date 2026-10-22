@@ -23,10 +23,11 @@ const challengeTargets = <String, List<String>>{
   'المكتب': ['desk', 'table', 'computer desk'],
   'المرحاض': ['toilet', 'bathroom'],
 };
+final Map<int, String> targetByAlarmId = {};
 void openChallengeFromPayload(String? payload) {
   if (payload == null || payload.isEmpty) return;
   navigatorKey.currentState?.push(MaterialPageRoute(
-    builder: (_) => const AlarmChallengeScreen(target: 'فرشاة الأسنان'),
+    builder: (_) => AlarmChallengeScreen(target: targetByAlarmId[int.tryParse(payload) ?? -1] ?? 'فرشاة الأسنان'),
   ));
 }
 
@@ -157,6 +158,84 @@ class AlarmStore extends ChangeNotifier {
       }
     }
   }
+}
+
+
+class AlarmChallengeScreen extends StatefulWidget {
+  const AlarmChallengeScreen({super.key, required this.target});
+  final String target;
+  @override State<AlarmChallengeScreen> createState() => _AlarmChallengeScreenState();
+}
+class _AlarmChallengeScreenState extends State<AlarmChallengeScreen> {
+  bool checking = false;
+  String message = 'التقط صورة واضحة للشيء الذي اخترته.';
+  Future<void> takePhoto() async {
+    if (checking) return;
+    setState(() { checking = true; message = 'جارٍ فحص الصورة…'; });
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 82);
+      if (photo == null) {
+        if (mounted) setState(() { checking = false; message = 'لم تُلتقط صورة. حاول مجدداً.'; });
+        return;
+      }
+      final aliases = challengeTargets[widget.target] ?? [widget.target.toLowerCase()];
+      final labeler = ImageLabeler(options: ImageLabelerOptions(confidenceThreshold: 0.40));
+      try {
+        final labels = await labeler.processImage(InputImage.fromFilePath(photo.path));
+        final found = labels.any((label) {
+          final text = label.label.toLowerCase();
+          return aliases.any((alias) => text.contains(alias) || alias.contains(text));
+        });
+        if (!mounted) return;
+        if (found) {
+          setState(() { checking = false; message = 'تم التعرّف على الهدف بنجاح!'; });
+          await Future.delayed(const Duration(milliseconds: 650));
+          if (mounted) Navigator.of(context).pop();
+        } else {
+          setState(() { checking = false; message = 'لم نتعرّف على ${widget.target}. جرّب إضاءة أوضح أو زاوية مختلفة.'; });
+        }
+      } finally {
+        await labeler.close();
+      }
+    } catch (_) {
+      if (mounted) setState(() { checking = false; message = 'تعذّر فحص الصورة. تحقق من إذن الكاميرا وحاول مجدداً.'; });
+    }
+  }
+  @override Widget build(BuildContext context) => Directionality(
+    textDirection: TextDirection.rtl,
+    child: PopScope(canPop: false, child: Scaffold(
+      backgroundColor: const Color(0xFF0D0B17),
+      body: SafeArea(child: Padding(padding: const EdgeInsets.all(24), child: Column(
+        mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(width: 100, height: 100, decoration: BoxDecoration(
+            color: const Color(0xFF2C2349), borderRadius: BorderRadius.circular(30)),
+            child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF9B7BFF), size: 52)),
+          const SizedBox(height: 28),
+          const Text('حان وقت الاستيقاظ', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Text('التحدّي: صوّر ${widget.target}', textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 19, color: Color(0xFFC7B8FF))),
+          const SizedBox(height: 18),
+          Container(width: double.infinity, padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: const Color(0xFF19152A), borderRadius: BorderRadius.circular(18)),
+            child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70))),
+          const SizedBox(height: 24),
+          SizedBox(width: double.infinity, height: 58, child: FilledButton.icon(
+            onPressed: checking ? null : takePhoto,
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF9B7BFF),
+              foregroundColor: const Color(0xFF160E2C), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+            icon: checking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.camera_alt_rounded),
+            label: Text(checking ? 'جارٍ التحقق…' : 'فتح الكاميرا والتصوير', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          )),
+          const SizedBox(height: 12),
+          const Text('يتم فحص الصورة على الجهاز، وقد يخطئ التعرّف حسب الإضاءة وزاوية التصوير.',
+            textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
+        ],
+      ))),
+    )),
+  );
 }
 
 class SmartAlarmApp extends StatefulWidget {
