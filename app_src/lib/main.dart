@@ -42,8 +42,10 @@ Future<void> main() async {
   await notifications.initialize(settings,
     onDidReceiveNotificationResponse: (response) => openChallengeFromPayload(response.payload));
   final launchDetails = await notifications.getNotificationAppLaunchDetails();
-  await notifications.resolvePlatformSpecificImplementation<
-      AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+  final androidNotifications = notifications.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
+  await androidNotifications?.requestNotificationsPermission();
+  await androidNotifications?.requestExactAlarmsPermission();
   runApp(const SmartAlarmApp());
   if (launchDetails?.didNotificationLaunchApp == true) {
     WidgetsBinding.instance.addPostFrameCallback((_) =>
