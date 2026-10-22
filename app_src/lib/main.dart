@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -13,6 +14,7 @@ const purple = Color(0xFF9B7BFF);
 const softPurple = Color(0xFF2C2349);
 final notifications = FlutterLocalNotificationsPlugin();
 final navigatorKey = GlobalKey<NavigatorState>();
+const ringtoneChannel = MethodChannel('smart_alarm/ringtone');
 const challengeTargets = <String, List<String>>{
   'فرشاة الأسنان': ['toothbrush', 'brush', 'dental'],
   'المغسلة': ['sink', 'faucet', 'washbasin', 'bathroom'],
@@ -170,6 +172,9 @@ class AlarmChallengeScreen extends StatefulWidget {
 }
 class _AlarmChallengeScreenState extends State<AlarmChallengeScreen> {
   bool checking = false;
+  @override void initState() { super.initState(); ringtoneChannel.invokeMethod('start').catchError((_) {}); }
+  Future<void> stopRinging() async { try { await ringtoneChannel.invokeMethod('stop'); } catch (_) {} }
+  @override void dispose() { stopRinging(); super.dispose(); }
   String message = 'التقط صورة واضحة للشيء الذي اخترته.';
   Future<void> takePhoto() async {
     if (checking) return;
@@ -191,6 +196,7 @@ class _AlarmChallengeScreenState extends State<AlarmChallengeScreen> {
         if (!mounted) return;
         if (found) {
           setState(() { checking = false; message = 'تم التعرّف على الهدف بنجاح!'; });
+          await stopRinging();
           await Future.delayed(const Duration(milliseconds: 650));
           if (mounted) Navigator.of(context).pop();
         } else {
