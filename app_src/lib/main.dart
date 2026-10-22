@@ -156,7 +156,7 @@ class AlarmStore extends ChangeNotifier {
         date = date.add(Duration(days: delta));
         await notifications.zonedSchedule(
           a.id * 10 + d, a.label, 'حان وقت المنبّه ⏰',
-          tz.TZDateTime.from(date, tz.local), details, payload: a.id.toString(),
+          tz.TZDateTime.from(date, tz.local), details, payload: a.target,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
