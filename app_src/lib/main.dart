@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -10,6 +12,23 @@ const panel = Color(0xFF19152A);
 const purple = Color(0xFF9B7BFF);
 const softPurple = Color(0xFF2C2349);
 final notifications = FlutterLocalNotificationsPlugin();
+final navigatorKey = GlobalKey<NavigatorState>();
+const challengeTargets = <String, List<String>>{
+  'فرشاة الأسنان': ['toothbrush', 'brush', 'dental'],
+  'المغسلة': ['sink', 'faucet', 'washbasin', 'bathroom'],
+  'كوب ماء': ['cup', 'mug', 'glass', 'water bottle', 'bottle'],
+  'السرير': ['bed', 'pillow', 'bedroom', 'mattress'],
+  'الباب': ['door', 'doorknob'],
+  'الحذاء': ['shoe', 'footwear', 'sneaker', 'boot'],
+  'المكتب': ['desk', 'table', 'computer desk'],
+  'المرحاض': ['toilet', 'bathroom'],
+};
+void openChallengeFromPayload(String? payload) {
+  if (payload == null || payload.isEmpty) return;
+  navigatorKey.currentState?.push(MaterialPageRoute(
+    builder: (_) => const AlarmChallengeScreen(target: 'فرشاة الأسنان'),
+  ));
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,10 +37,16 @@ Future<void> main() async {
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     iOS: DarwinInitializationSettings(),
   );
-  await notifications.initialize(settings);
+  await notifications.initialize(settings,
+    onDidReceiveNotificationResponse: (response) => openChallengeFromPayload(response.payload));
+  final launchDetails = await notifications.getNotificationAppLaunchDetails();
   await notifications.resolvePlatformSpecificImplementation<
       AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
   runApp(const SmartAlarmApp());
+  if (launchDetails?.didNotificationLaunchApp == true) {
+    WidgetsBinding.instance.addPostFrameCallback((_) =>
+      openChallengeFromPayload(launchDetails?.notificationResponse?.payload));
+  }
 }
 
 class AlarmItem {
@@ -105,13 +130,15 @@ class AlarmStore extends ChangeNotifier {
     const details = NotificationDetails(android: AndroidNotificationDetails(
       'smart_alarm_channel', 'المنبّهات',
       channelDescription: 'تنبيهات تطبيق المنبّه الذكي',
-      importance: Importance.max, priority: Priority.high,
+      importance: Importance.max, priority: Priority.max,
       category: AndroidNotificationCategory.alarm,
+      fullScreenIntent: true, ongoing: true, autoCancel: false,
+      visibility: NotificationVisibility.public,
     ));
     if (a.days.isEmpty) {
       await notifications.zonedSchedule(
         a.id, a.label, 'حان وقت المنبّه ⏰', tz.TZDateTime.from(next, tz.local),
-        details, androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        details, payload: a.id.toString(), androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       );
     } else {
@@ -122,8 +149,8 @@ class AlarmStore extends ChangeNotifier {
         date = date.add(Duration(days: delta));
         await notifications.zonedSchedule(
           a.id * 10 + d, a.label, 'حان وقت المنبّه ⏰',
-          tz.TZDateTime.from(date, tz.local), details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          tz.TZDateTime.from(date, tz.local), details, payload: a.id.toString(),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         );
@@ -144,6 +171,7 @@ class _SmartAlarmAppState extends State<SmartAlarmApp> {
     animation: store,
     builder: (_, __) => MaterialApp(
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       title: 'المنبّه الذكي',
       theme: ThemeData(useMaterial3: true, brightness: Brightness.dark,
         scaffoldBackgroundColor: bg,
