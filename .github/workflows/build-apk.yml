@@ -19,6 +19,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install Android platform and build tools
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
